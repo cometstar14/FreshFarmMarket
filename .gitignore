@@ -1,0 +1,39 @@
+# =========== DO NOT UPLOAD SECRETS ===========
+appsettings.json
+appsettings.*.json
+*.user
+*.suo
+
+# =========== VS FILES ===========
+.vs/
+.vscode/
+_ReSharper.*/
+
+# =========== BUILD FILES ===========
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+*.csproj.user
+*.csproj.bak
+
+# =========== PACKAGES ===========
+packages/
+*.nupkg
+
+# =========== DATABASE ===========
+*.mdf
+*.ldf
+
+# =========== OTHER ===========
+*.log
+*.sql
+*.bak
+*.tmpFreshFarmMarket.csproj.user
+bin/
+obj/
+Migrations/
+Middleware/
+wwwroot/uploads/

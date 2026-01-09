@@ -1,0 +1,147 @@
+﻿@model Enable2FAViewModel
+@{
+    ViewData["Title"] = "Enable Two-Factor Authentication";
+    var user = ViewBag.User as User;
+    var currentStatus = user?.TwoFactorEnabled ?? false;
+}
+
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h2 class="mb-0">Two-Factor Authentication (2FA)</h2>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-shield-alt"></i> <strong>Two-Factor Authentication</strong> adds an extra layer of security to your account.
+                    When enabled, you'll need to enter a code sent to your mobile phone in addition to your password.
+                </div>
+
+                <div class="mb-4">
+                    <h5>
+                        Current Status:
+                        @if (currentStatus)
+                        {
+                            <span class="badge bg-success">Enabled</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">Disabled</span>
+                        }
+                    </h5>
+                </div>
+
+                @if (!currentStatus)
+                {
+                    <h5 class="mb-3">Enable Two-Factor Authentication</h5>
+                    <form asp-action="Enable2FA" method="post" id="enable2FAForm">
+                        <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+                        <div class="mb-3">
+                            <label asp-for="MobileNo" class="form-label"></label>
+                            <input asp-for="MobileNo" class="form-control" value="@user?.MobileNo" maxlength="8" />
+                            <span asp-validation-for="MobileNo" class="text-danger"></span>
+                            <small class="form-text text-muted">We'll send verification codes to this number.</small>
+                        </div>
+
+                        <div class="d-grid gap-2 mb-3">
+                            <button type="button" class="btn btn-info btn-lg" id="sendCodeBtn">Send Verification Code</button>
+                        </div>
+
+                        <div id="verificationSection" style="display: none;">
+                            <hr class="my-4" />
+                            <div class="alert alert-success">
+                                <i class="fas fa-check-circle"></i> A verification code has been sent to your mobile number.
+                            </div>
+
+                            <div class="mb-3">
+                                <label asp-for="VerificationCode" class="form-label"></label>
+                                <input asp-for="VerificationCode" class="form-control form-control-lg text-center"
+                                       maxlength="6"
+                                       placeholder="000000"
+                                       style="letter-spacing: 10px; font-size: 24px;" />
+                                <span asp-validation-for="VerificationCode" class="text-danger"></span>
+                                <small class="form-text text-muted">Enter the 6-digit code we sent you.</small>
+                            </div>
+
+                            <input type="hidden" asp-for="Enable2FA" value="true" />
+
+                            <div class="d-grid gap-2 mb-3">
+                                <button type="submit" class="btn btn-primary btn-lg">Enable 2FA</button>
+                            </div>
+                        </div>
+                    </form>
+                }
+                else
+                {
+                    <form asp-action="Disable2FA" method="post">
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle"></i> <strong>Warning:</strong> Disabling 2FA will reduce the security of your account.
+                        </div>
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-danger" onclick="return confirm('Are you sure you want to disable Two-Factor Authentication?')">
+                                Disable Two-Factor Authentication
+                            </button>
+                        </div>
+                    </form>
+                }
+
+                <hr class="my-4" />
+                <div class="text-center">
+                    <a asp-controller="Home" asp-action="Index" class="btn btn-secondary">Back to Home</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+    <script>
+        document.getElementById('sendCodeBtn')?.addEventListener('click', async function() {
+            const mobileNo = document.getElementById('MobileNo').value;
+
+            if (!mobileNo || !/^[689]\d{7}$/.test(mobileNo)) {
+                alert('Please enter a valid mobile number (8 digits starting with 6, 8, or 9)');
+                return;
+            }
+
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Sending...';
+
+            try {
+                const response = await fetch('/Account/SendVerificationCode', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value
+                    },
+                    body: JSON.stringify({ mobileNo: mobileNo })
+                });
+
+                if (response.ok) {
+                    document.getElementById('verificationSection').style.display = 'block';
+                    this.innerHTML = '<i class="fas fa-check"></i> Code Sent';
+                    this.classList.remove('btn-info');
+                    this.classList.add('btn-success');
+                } else {
+                    alert('Failed to send verification code. Please try again.');
+                    this.disabled = false;
+                    this.innerHTML = 'Send Verification Code';
+                }
+            } catch (error) {
+                alert('An error occurred. Please try again.');
+                this.disabled = false;
+                this.innerHTML = 'Send Verification Code';
+            }
+        });
+
+        // Only allow digits in verification code
+        document.getElementById('VerificationCode')?.addEventListener('keypress', function(e) {
+            if (!/\d/.test(e.key) && e.key !== 'Backspace' && e.key !== 'Delete') {
+                e.preventDefault();
+            }
+        });
+    </script>
+    <partial name="_ValidationScriptsPartial" />
+}

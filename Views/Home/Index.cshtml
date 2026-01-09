@@ -1,0 +1,108 @@
+﻿@model User
+@{
+    ViewData["Title"] = "Home";
+}
+
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card shadow">
+            <div class="card-header bg-success text-white">
+                <h2 class="mb-0">Welcome to Fresh Farm Market!</h2>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 text-center">
+                        @if (!string.IsNullOrEmpty(Model.PhotoPath))
+                        {
+                            <img src="@Model.PhotoPath" alt="Profile Photo" class="img-fluid rounded-circle mb-3 shadow" style="max-width: 200px; height: 200px; object-fit: cover;" />
+                        }
+                        else
+                        {
+                            <div class="bg-secondary rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3" style="width: 200px; height: 200px;">
+                                <span class="text-white fs-1">@Model.FullName.Substring(0, 1)</span>
+                            </div>
+                        }
+                    </div>
+                    <div class="col-md-8">
+                        <h3 class="mb-4">Member Profile</h3>
+                        <table class="table table-hover">
+                            <tbody>
+                                <tr>
+                                    <th style="width: 30%;">Full Name:</th>
+                                    <td>@Model.FullName</td>
+                                </tr>
+                                <tr>
+                                    <th>Email:</th>
+                                    <td>@Model.Email</td>
+                                </tr>
+                                <tr>
+                                    <th>Gender:</th>
+                                    <td>@Model.Gender</td>
+                                </tr>
+                                <tr>
+                                    <th>Mobile Number:</th>
+                                    <td>@Model.MobileNo</td>
+                                </tr>
+                                <tr>
+                                    <th>Credit Card:</th>
+                                    <td>
+                                        <span class="badge bg-warning text-dark" id="maskedCard">@ViewBag.MaskedCreditCard</span>
+                                        <button class="btn btn-sm btn-info ms-2" onclick="toggleCardDisplay()" id="toggleBtn">Show Full</button>
+                                        <span id="fullCard" style="display:none;" class="badge bg-info">@ViewBag.DecryptedCreditCard</span>
+                                        <small class="d-block text-muted mt-1">Encrypted in database with AES-256</small>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Delivery Address:</th>
+                                    <td>@Html.Raw(Model.DeliveryAddress)</td>
+                                </tr>
+                                @if (!string.IsNullOrEmpty(Model.AboutMe))
+                                {
+                                    <tr>
+                                        <th>About Me:</th>
+                                        <td>@Html.Raw(Model.AboutMe)</td>
+                                    </tr>
+                                }
+                                <tr>
+                                    <th>Member Since:</th>
+                                    <td>@Model.CreatedDate.ToString("MMMM dd, yyyy")</td>
+                                </tr>
+                                @if (Model.LastLoginDate.HasValue)
+                                {
+                                    <tr>
+                                        <th>Last Login:</th>
+                                        <td>@Model.LastLoginDate.Value.ToString("MMMM dd, yyyy hh:mm tt")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function toggleCardDisplay() {
+            var maskedCard = document.getElementById('maskedCard');
+            var fullCard = document.getElementById('fullCard');
+            var toggleBtn = document.getElementById('toggleBtn');
+
+            if (fullCard.style.display === 'none') {
+                maskedCard.style.display = 'none';
+                fullCard.style.display = 'inline';
+                toggleBtn.textContent = 'Hide';
+                toggleBtn.classList.remove('btn-info');
+                toggleBtn.classList.add('btn-warning');
+            } else {
+                maskedCard.style.display = 'inline';
+                fullCard.style.display = 'none';
+                toggleBtn.textContent = 'Show Full';
+                toggleBtn.classList.remove('btn-warning');
+                toggleBtn.classList.add('btn-info');
+            }
+        }
+    </script>
+}

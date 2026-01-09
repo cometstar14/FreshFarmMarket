@@ -1,0 +1,73 @@
+﻿@model VerifyOtpViewModel
+@{
+    ViewData["Title"] = "Verify Code";
+}
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow">
+            <div class="card-header bg-warning text-white">
+                <h2 class="mb-0">Two-Factor Authentication</h2>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-mobile-alt"></i> A 6-digit verification code has been sent to your mobile number.
+                </div>
+
+                <form asp-action="VerifyOtp" method="post" id="verifyOtpForm">
+                    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+                    <input type="hidden" asp-for="Email" />
+                    <input type="hidden" asp-for="RememberMe" />
+
+                    <div class="mb-3">
+                        <label asp-for="Code" class="form-label"></label>
+                        <input asp-for="Code" class="form-control form-control-lg text-center"
+                               maxlength="6"
+                               placeholder="000000"
+                               autofocus
+                               style="letter-spacing: 10px; font-size: 24px;" />
+                        <span asp-validation-for="Code" class="text-danger"></span>
+                        <small class="form-text text-muted">The code will expire in 5 minutes.</small>
+                    </div>
+
+                    <div class="d-grid gap-2 mb-3">
+                        <button type="submit" class="btn btn-warning btn-lg">Verify Code</button>
+                    </div>
+
+                    <div class="text-center">
+                        <p class="mb-2">Didn't receive the code?</p>
+                        <a asp-action="ResendOtp" asp-route-email="@Model.Email" class="btn btn-sm btn-outline-secondary">Resend Code</a>
+                    </div>
+
+                    <hr class="my-3" />
+
+                    <div class="text-center">
+                        <a asp-action="Logout" class="text-muted">Cancel and Logout</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+    <script>
+        // Auto-submit when 6 digits entered
+        document.getElementById('Code').addEventListener('input', function(e) {
+            if (this.value.length === 6 && /^\d{6}$/.test(this.value)) {
+                // Optional: auto-submit after brief delay
+                // setTimeout(() => document.getElementById('verifyOtpForm').submit(), 500);
+            }
+        });
+
+        // Only allow digits
+        document.getElementById('Code').addEventListener('keypress', function(e) {
+            if (!/\d/.test(e.key) && e.key !== 'Backspace' && e.key !== 'Delete') {
+                e.preventDefault();
+            }
+        });
+    </script>
+    <partial name="_ValidationScriptsPartial" />
+}
