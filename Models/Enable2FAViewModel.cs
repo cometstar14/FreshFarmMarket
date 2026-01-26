@@ -7,7 +7,11 @@ namespace FreshFarmMarket.Models
         [Display(Name = "Enable Two-Factor Authentication")]
         public bool Enable2FA { get; set; }
 
-        [Required(ErrorMessage = "Mobile number is required for 2FA")]
+        [Required(ErrorMessage = "Please select a 2FA method")]
+        [Display(Name = "2FA Method")]
+        public string TwoFactorMethod { get; set; } = "SMS"; // "SMS" or "Email"
+
+        [Required(ErrorMessage = "Mobile number is required for SMS 2FA")]
         [RegularExpression(@"^[689]\d{7}$", ErrorMessage = "Mobile Number must be 8 digits starting with 6, 8, or 9")]
         [Display(Name = "Mobile Number")]
         public string MobileNo { get; set; } = string.Empty;

@@ -8,6 +8,7 @@ namespace FreshFarmMarket.Services
     {
         Task<bool> SendEmailAsync(string toEmail, string subject, string htmlMessage);
         Task<bool> SendPasswordResetEmailAsync(string toEmail, string resetLink);
+        Task<bool> Send2FACodeAsync(string toEmail, string code);
     }
 
     public class EmailService : IEmailService
@@ -82,6 +83,28 @@ namespace FreshFarmMarket.Services
                     <p>Best regards,<br/>Fresh Farm Market Team</p>
                 </body>
                 </html>";
+
+            return await SendEmailAsync(toEmail, subject, htmlMessage);
+        }
+        public async Task<bool> Send2FACodeAsync(string toEmail, string code)
+        {
+            string subject = "Your Fresh Farm Market Verification Code";
+            string htmlMessage = $@"
+        <html>
+        <body style='font-family: Arial, sans-serif;'>
+            <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
+                <h2 style='color: #4CAF50;'>Two-Factor Authentication</h2>
+                <p>Your verification code is:</p>
+                <div style='background-color: #4CAF50; color: white; padding: 20px; text-align: center; margin: 20px 0; border-radius: 5px;'>
+                    <h1 style='margin: 0; letter-spacing: 10px; font-size: 36px;'>{code}</h1>
+                </div>
+                <p>This code will expire in 5 minutes.</p>
+                <p>If you did not request this code, please ignore this email.</p>
+                <br/>
+                <p>Best regards,<br/>Fresh Farm Market Team</p>
+            </div>
+        </body>
+        </html>";
 
             return await SendEmailAsync(toEmail, subject, htmlMessage);
         }

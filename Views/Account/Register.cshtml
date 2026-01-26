@@ -67,19 +67,19 @@
                             <h6 class="mb-2">Password Requirements:</h6>
                             <ul class="list-unstyled mb-0">
                                 <li id="reqLength" class="text-danger">
-                                    <i class="fas fa-times-circle"></i> At least 12 characters
+                                    At least 12 characters
                                 </li>
                                 <li id="reqLower" class="text-danger">
-                                    <i class="fas fa-times-circle"></i> One lowercase letter
+                                    One lowercase letter
                                 </li>
                                 <li id="reqUpper" class="text-danger">
-                                    <i class="fas fa-times-circle"></i> One uppercase letter
+                                    One uppercase letter
                                 </li>
                                 <li id="reqNumber" class="text-danger">
-                                    <i class="fas fa-times-circle"></i> One number
+                                    One number
                                 </li>
                                 <li id="reqSpecial" class="text-danger">
-                                    <i class="fas fa-times-circle"></i> One special character
+                                    One special character
                                 </li>
                             </ul>
                         </div>
@@ -155,13 +155,22 @@
             // Update UI based on criteria
             function updatePasswordUI(checks) {
                 // Update requirement indicators
+            
+                const requirementTexts = {
+                    length: 'At least 12 characters',
+                    lower: 'One lowercase letter',
+                    upper: 'One uppercase letter',
+                    number: 'One number',
+                    special: 'One special character'
+                };
+
                 for (const [key, element] of Object.entries(requirements)) {
                     if (checks[key]) {
-                        element.className = "requirement-met";
-                        element.innerHTML = '<i class="fas fa-check-circle"></i> ' + element.textContent.replace(/^.*? - /, '');
+                        element.className = "text-success";
+                        element.innerHTML = '✓ ' + requirementTexts[key];
                     } else {
-                        element.className = "requirement-not-met";
-                        element.innerHTML = '<i class="fas fa-times-circle"></i> ' + element.textContent.replace(/^.*? - /, '');
+                        element.className = "text-danger";
+                        element.innerHTML = '✗ ' + requirementTexts[key];
                     }
                 }
                 
@@ -213,9 +222,9 @@
                 }
                 
                 if (password === confirmPassword) {
-                    matchDiv.innerHTML = '<span class="text-success"><i class="fas fa-check-circle"></i> Passwords match</span>';
+                    matchDiv.innerHTML = '<span class="text-success">✓ Passwords match</span>';
                 } else {
-                    matchDiv.innerHTML = '<span class="text-danger"><i class="fas fa-times-circle"></i> Passwords do not match</span>';
+                    matchDiv.innerHTML = '<span class="text-danger">✗ Passwords do not match</span>';
                 }
             }
 
@@ -232,7 +241,7 @@
                     if (!strengthDiv.innerHTML.includes('Minimum 12 characters')) {
                         strengthDiv.innerHTML += `
                             <div class="alert alert-warning alert-dismissible fade show mt-2 py-2" role="alert">
-                                <i class="fas fa-exclamation-triangle"></i>
+                                ⚠
                                 <strong>Password too short!</strong> You need at least ${12 - password.length} more characters.
                                 <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert"></button>
                             </div>

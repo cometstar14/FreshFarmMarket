@@ -14,7 +14,6 @@ namespace FreshFarmMarket.Data
         public DbSet<PasswordHistory> PasswordHistories { get; set; }
         public DbSet<AuditLog> AuditLogs { get; set; }
         public DbSet<TwoFactorCode> TwoFactorCodes { get; set; }
-
         public DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

@@ -14,7 +14,7 @@
             <div class="card-body">
                 <div class="alert alert-info">
                     <i class="fas fa-shield-alt"></i> <strong>Two-Factor Authentication</strong> adds an extra layer of security to your account.
-                    When enabled, you'll need to enter a code sent to your mobile phone in addition to your password.
+                    When enabled, you'll need to enter a verification code in addition to your password.
                 </div>
 
                 <div class="mb-4">
@@ -23,6 +23,10 @@
                         @if (currentStatus)
                         {
                             <span class="badge bg-success">Enabled</span>
+                            @if (!string.IsNullOrEmpty(user?.TwoFactorMethod))
+                            {
+                                <span class="badge bg-info">@user.TwoFactorMethod</span>
+                            }
                         }
                         else
                         {
@@ -37,7 +41,25 @@
                     <form asp-action="Enable2FA" method="post" id="enable2FAForm">
                         <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-                        <div class="mb-3">
+                        <!-- 2FA Method Selection -->
+                        <div class="mb-4">
+                            <label class="form-label"><strong>Choose your 2FA method:</strong></label>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="radio" name="TwoFactorMethod" id="methodSMS" value="SMS" checked>
+                                <label class="form-check-label" for="methodSMS">
+                                    <i class="fas fa-mobile-alt"></i> <strong>SMS</strong> - Receive codes via text message
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="TwoFactorMethod" id="methodEmail" value="Email">
+                                <label class="form-check-label" for="methodEmail">
+                                    <i class="fas fa-envelope"></i> <strong>Email</strong> - Receive codes via email (@user?.Email)
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Mobile Number (only for SMS) -->
+                        <div class="mb-3" id="mobileSection">
                             <label asp-for="MobileNo" class="form-label"></label>
                             <input asp-for="MobileNo" class="form-control" value="@user?.MobileNo" maxlength="8" />
                             <span asp-validation-for="MobileNo" class="text-danger"></span>
@@ -51,7 +73,7 @@
                         <div id="verificationSection" style="display: none;">
                             <hr class="my-4" />
                             <div class="alert alert-success">
-                                <i class="fas fa-check-circle"></i> A verification code has been sent to your mobile number.
+                                <i class="fas fa-check-circle"></i> <span id="codeDestination">A verification code has been sent.</span>
                             </div>
 
                             <div class="mb-3">
@@ -74,6 +96,10 @@
                 }
                 else
                 {
+                    <div class="alert alert-success mb-3">
+                        <i class="fas fa-info-circle"></i> Your 2FA is currently set to: <strong>@user?.TwoFactorMethod</strong>
+                    </div>
+
                     <form asp-action="Disable2FA" method="post">
                         <div class="alert alert-warning">
                             <i class="fas fa-exclamation-triangle"></i> <strong>Warning:</strong> Disabling 2FA will reduce the security of your account.
@@ -96,12 +122,31 @@
 </div>
 
 @section Scripts {
-    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <script>
+        // Function to get anti-forgery token
+        function getAntiForgeryToken() {
+            return document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+        }
+
+        // Show/hide mobile number field based on method selection
+        document.querySelectorAll('input[name="TwoFactorMethod"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                const mobileSection = document.getElementById('mobileSection');
+                if (this.value === 'SMS') {
+                    mobileSection.style.display = 'block';
+                } else {
+                    mobileSection.style.display = 'none';
+                }
+            });
+        });
+
         document.getElementById('sendCodeBtn')?.addEventListener('click', async function() {
+            const selectedMethod = document.querySelector('input[name="TwoFactorMethod"]:checked').value;
             const mobileNo = document.getElementById('MobileNo').value;
 
-            if (!mobileNo || !/^[689]\d{7}$/.test(mobileNo)) {
+            // Validate mobile number only for SMS
+            if (selectedMethod === 'SMS' && (!mobileNo || !/^[689]\d{7}$/.test(mobileNo))) {
                 alert('Please enter a valid mobile number (8 digits starting with 6, 8, or 9)');
                 return;
             }
@@ -114,23 +159,34 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value
+                        'X-CSRF-TOKEN': getAntiForgeryToken()
                     },
-                    body: JSON.stringify({ mobileNo: mobileNo })
+                    body: JSON.stringify({
+                        mobileNo: mobileNo,
+                        method: selectedMethod
+                    })
                 });
 
-                if (response.ok) {
+                const result = await response.json();
+
+                if (response.ok && result.success) {
                     document.getElementById('verificationSection').style.display = 'block';
                     this.innerHTML = '<i class="fas fa-check"></i> Code Sent';
                     this.classList.remove('btn-info');
                     this.classList.add('btn-success');
+
+                    // Update the destination message
+                    const destination = selectedMethod === 'SMS' ? 'your mobile number' : 'your email';
+                    document.getElementById('codeDestination').textContent = `A verification code has been sent to ${destination}.`;
+
                 } else {
-                    alert('Failed to send verification code. Please try again.');
+                    alert(result.error || 'Failed to send verification code. Please try again.');
                     this.disabled = false;
                     this.innerHTML = 'Send Verification Code';
                 }
             } catch (error) {
-                alert('An error occurred. Please try again.');
+                console.error('Error:', error);
+                alert('An error occurred. Please check your connection and try again.');
                 this.disabled = false;
                 this.innerHTML = 'Send Verification Code';
             }

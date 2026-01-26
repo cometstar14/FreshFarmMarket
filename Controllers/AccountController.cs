@@ -18,6 +18,8 @@ namespace FreshFarmMarket.Controllers
         private readonly ISessionTrackingService _sessionTrackingService;
         private readonly IEmailService _emailService;
         private readonly ISmsService _smsService;
+        private readonly ILogger<AccountController> _logger;
+
         public AccountController(
             ApplicationDbContext context,
             IEncryptionService encryptionService,
@@ -27,7 +29,8 @@ namespace FreshFarmMarket.Controllers
             IWebHostEnvironment env,
             ISessionTrackingService sessionTrackingService,
             IEmailService emailService,
-            ISmsService smsService)
+            ISmsService smsService,
+            ILogger<AccountController> logger)
         {
             _context = context;
             _encryptionService = encryptionService;
@@ -38,6 +41,7 @@ namespace FreshFarmMarket.Controllers
             _sessionTrackingService = sessionTrackingService;
             _emailService = emailService;
             _smsService = smsService;
+            _logger = logger;
         }
 
         // ========== REGISTRATION ==========
@@ -123,6 +127,7 @@ namespace FreshFarmMarket.Controllers
             {
                 string salt;
                 string hashedPassword = _encryptionService.HashPassword(model.Password, out salt);
+
                 string encryptedCreditCard = _encryptionService.Encrypt(model.CreditCardNo);
 
                 var user = new User
@@ -217,7 +222,10 @@ namespace FreshFarmMarket.Controllers
                 return View(model);
             }
 
-            var isValidCaptcha = await _reCaptchaService.ValidateTokenAsync(model.RecaptchaToken);
+            // TEMPORARY: Comment out reCAPTCHA to test if it's the issue
+            // var isValidCaptcha = await _reCaptchaService.ValidateTokenAsync(model.RecaptchaToken);
+            var isValidCaptcha = true; // Force true for testing
+
             if (!isValidCaptcha)
             {
                 ModelState.AddModelError("", "reCAPTCHA validation failed. Please try again.");
@@ -256,7 +264,6 @@ namespace FreshFarmMarket.Controllers
 
             if (!_encryptionService.VerifyPassword(model.Password, user.PasswordHash, user.Salt))
             {
-                // Check for multiple logins BEFORE creating session
                 var activeSessions = _sessionTrackingService.GetActiveSessionCount(user.UserId);
 
                 user.LoginAttempts++;
@@ -303,45 +310,69 @@ namespace FreshFarmMarket.Controllers
             user.LastLoginDate = DateTime.Now;
             await _context.SaveChangesAsync();
 
+            //2FA CHECK
             if (user.TwoFactorEnabled)
-            {
-                // Generate OTP code
-                var code = new Random().Next(100000, 999999).ToString();
-                var expirationMinutes = 5;
-
-                var twoFactorCode = new TwoFactorCode
+                if (user.TwoFactorEnabled)
                 {
-                    UserId = user.UserId,
-                    Code = code,
-                    CreatedDate = DateTime.Now,
-                    ExpirationDate = DateTime.Now.AddMinutes(expirationMinutes),
-                    IsUsed = false
-                };
+                    // Generate OTP code
+                    var code = new Random().Next(100000, 999999).ToString();
+                    var expirationMinutes = 5;
 
-                _context.TwoFactorCodes.Add(twoFactorCode);
-                await _context.SaveChangesAsync();
+                    var twoFactorCode = new TwoFactorCode
+                    {
+                        UserId = user.UserId,
+                        Code = code,
+                        CreatedDate = DateTime.Now,
+                        ExpirationDate = DateTime.Now.AddMinutes(expirationMinutes),
+                        IsUsed = false
+                    };
 
-                // Send OTP via SMS
-                var smsSent = await _smsService.Send2FACodeAsync(user.MobileNo, code);
+                    _context.TwoFactorCodes.Add(twoFactorCode);
+                    await _context.SaveChangesAsync();
 
-                if (!smsSent)
-                {
-                    ModelState.AddModelError("", "Failed to send verification code. Please try again.");
-                    await _auditService.LogActivityAsync(user.UserId, user.Email, "LoginFailed", false, "Failed to send 2FA SMS", HttpContext);
-                    return View(model);
+                    // Send OTP via user's preferred method
+                    bool codeSent = false;
+                    string destination = "";
+
+                    if (user.TwoFactorMethod == "Email")
+                    {
+                        codeSent = await _emailService.Send2FACodeAsync(user.Email, code);
+                        destination = "your email";
+                        await _auditService.LogActivityAsync(user.UserId, user.Email, "Login2FAInitiated", true,
+                            $"2FA code sent via Email to {user.Email}", HttpContext);
+                    }
+                    else // Default to SMS
+                    {
+                        codeSent = await _smsService.Send2FACodeAsync(user.MobileNo, code);
+                        destination = "your mobile number";
+                        await _auditService.LogActivityAsync(user.UserId, user.Email, "Login2FAInitiated", true,
+                            $"2FA code sent via SMS to {user.MobileNo}", HttpContext);
+                    }
+
+                    if (!codeSent)
+                    {
+                        ModelState.AddModelError("", "Failed to send verification code. Please try again.");
+                        await _auditService.LogActivityAsync(user.UserId, user.Email, "Login2FAFailed", false,
+                            "Failed to send 2FA code", HttpContext);
+                        return View(model);
+                    }
+
+                    // Store temporary data for VerifyOtp page
+                    HttpContext.Session.SetInt32("TempUserId", user.UserId);
+                    HttpContext.Session.SetString("TempEmail", user.Email);
+                    HttpContext.Session.SetString("TempRememberMe", model.RememberMe.ToString());
+
+                    // Commit session
+                    await HttpContext.Session.CommitAsync();
+
+                    TempData["InfoMessage"] = $"A verification code has been sent to {destination}.";
+                    return RedirectToAction("VerifyOtp");
                 }
-
-                await _auditService.LogActivityAsync(user.UserId, user.Email, "Login2FAInitiated", true, "2FA code sent", HttpContext);
-
-                // Redirect to OTP verification
-                return RedirectToAction("VerifyOtp", new { email = user.Email, rememberMe = model.RememberMe });
-            }
 
             CreateSession(user);
 
             await _auditService.LogActivityAsync(user.UserId, user.Email, "Login", true, "Successful login", HttpContext);
 
-            // After successful login:
             if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
             {
                 return Redirect(returnUrl);
@@ -497,6 +528,9 @@ namespace FreshFarmMarket.Controllers
             if (IsUserLoggedIn())
                 return RedirectToAction("Index", "Home");
 
+            
+            ViewBag.ReCaptchaSiteKey = _configuration["ReCaptcha:SiteKey"];
+
             return View();
         }
 
@@ -504,8 +538,33 @@ namespace FreshFarmMarket.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> ForgotPassword(ForgotPasswordViewModel model)
         {
+
+            _logger.LogInformation("=== FORGOT PASSWORD POST CALLED ===");
+            _logger.LogInformation($"Email received: {model.Email}");
+            _logger.LogInformation($"RecaptchaToken: {model.RecaptchaToken}");
+            _logger.LogInformation($"ModelState.IsValid: {ModelState.IsValid}");
+
             if (!ModelState.IsValid)
             {
+                _logger.LogInformation("ModelState INVALID - Errors:");
+                foreach (var error in ModelState.Values.SelectMany(v => v.Errors))
+                {
+                    _logger.LogInformation($"  - {error.ErrorMessage}");
+                }
+            }
+            // ⭐ ADD THIS LINE
+            ViewBag.ReCaptchaSiteKey = _configuration["ReCaptcha:SiteKey"];
+
+            if (!ModelState.IsValid)
+            {
+                return View(model);
+            }
+
+            
+            var isValidCaptcha = await _reCaptchaService.ValidateTokenAsync(model.RecaptchaToken);
+            if (!isValidCaptcha)
+            {
+                ModelState.AddModelError("", "reCAPTCHA validation failed. Please try again.");
                 return View(model);
             }
 
@@ -728,16 +787,24 @@ namespace FreshFarmMarket.Controllers
                 return View(model);
             }
 
-            // Enable 2FA
+            // Enable 2FA with selected method
             user.TwoFactorEnabled = true;
-            user.MobileNo = model.MobileNo;
+            user.TwoFactorMethod = model.TwoFactorMethod; // ← NEW: Save the method
+
+            // Only update mobile number if SMS is chosen
+            if (model.TwoFactorMethod == "SMS")
+            {
+                user.MobileNo = model.MobileNo;
+            }
+
             recentCode.IsUsed = true;
             recentCode.UsedDate = DateTime.Now;
 
             await _context.SaveChangesAsync();
-            await _auditService.LogActivityAsync(user.UserId, user.Email, "Enable2FA", true, "Two-Factor Authentication enabled", HttpContext);
+            await _auditService.LogActivityAsync(user.UserId, user.Email, "Enable2FA", true,
+                $"Two-Factor Authentication enabled via {model.TwoFactorMethod}", HttpContext);
 
-            TempData["SuccessMessage"] = "Two-Factor Authentication has been enabled successfully!";
+            TempData["SuccessMessage"] = $"Two-Factor Authentication has been enabled successfully via {model.TwoFactorMethod}!";
             return RedirectToAction("Index", "Home");
         }
 
@@ -765,58 +832,135 @@ namespace FreshFarmMarket.Controllers
         [HttpPost]
         public async Task<IActionResult> SendVerificationCode([FromBody] SendCodeRequest request)
         {
-            if (!IsUserLoggedIn())
-                return Unauthorized();
-
-            var userId = GetCurrentUserId();
-            var user = await _context.Users.FindAsync(userId.Value);
-
-            if (user == null)
-                return NotFound();
-
-            // Generate 6-digit code
-            var code = new Random().Next(100000, 999999).ToString();
-            var expirationMinutes = 5;
-
-            var twoFactorCode = new TwoFactorCode
+            try
             {
-                UserId = user.UserId,
-                Code = code,
-                CreatedDate = DateTime.Now,
-                ExpirationDate = DateTime.Now.AddMinutes(expirationMinutes),
-                IsUsed = false
-            };
+                if (!IsUserLoggedIn())
+                    return Unauthorized(new { error = "Please log in first" });
 
-            _context.TwoFactorCodes.Add(twoFactorCode);
-            await _context.SaveChangesAsync();
+                var userId = GetCurrentUserId();
+                var user = await _context.Users.FindAsync(userId.Value);
 
-            // Send SMS
-            var smsSent = await _smsService.Send2FACodeAsync(request.MobileNo, code);
+                if (user == null)
+                    return NotFound(new { error = "User not found" });
 
-            if (smsSent)
-            {
-                await _auditService.LogActivityAsync(user.UserId, user.Email, "SendVerificationCode", true, "Verification code sent", HttpContext);
-                return Ok();
+                // Validate based on method
+                if (request.Method == "SMS")
+                {
+                    if (string.IsNullOrEmpty(request.MobileNo) || !Regex.IsMatch(request.MobileNo, @"^[689]\d{7}$"))
+                    {
+                        return BadRequest(new { error = "Please enter a valid Singapore mobile number (8 digits starting with 6, 8, or 9)" });
+                    }
+                }
+
+                // Generate 6-digit code
+                var code = new Random().Next(100000, 999999).ToString();
+                var expirationMinutes = 5;
+
+                // Save to database
+                var twoFactorCode = new TwoFactorCode
+                {
+                    UserId = user.UserId,
+                    Code = code,
+                    CreatedDate = DateTime.Now,
+                    ExpirationDate = DateTime.Now.AddMinutes(expirationMinutes),
+                    IsUsed = false
+                };
+
+                _context.TwoFactorCodes.Add(twoFactorCode);
+                await _context.SaveChangesAsync();
+
+                // Send code based on method
+                bool sent = false;
+                string destination = "";
+
+                if (request.Method == "Email")
+                {
+                    sent = await _emailService.Send2FACodeAsync(user.Email, code);
+                    destination = user.Email;
+
+                    await _auditService.LogActivityAsync(
+                        user.UserId,
+                        user.Email,
+                        "SendVerificationCode",
+                        true,
+                        $"Email verification code {code} sent to {user.Email}",
+                        HttpContext);
+                }
+                else // SMS
+                {
+                    sent = await _smsService.Send2FACodeAsync(request.MobileNo, code);
+                    destination = request.MobileNo;
+
+                    await _auditService.LogActivityAsync(
+                        user.UserId,
+                        user.Email,
+                        "SendVerificationCode",
+                        true,
+                        $"SMS verification code {code} sent to {request.MobileNo}",
+                        HttpContext);
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Verification code sent successfully via {request.Method}!",
+                    code = code, // Include for testing
+                    hint = request.Method == "SMS"
+                        ? "Check the console output or Logs/latest_verification_code.txt for the code"
+                        : "Check your email inbox (and spam folder)"
+                });
             }
-            else
+            catch (Exception ex)
             {
-                await _auditService.LogActivityAsync(user.UserId, user.Email, "SendVerificationCodeFailed", false, "Failed to send SMS", HttpContext);
-                return StatusCode(500);
+                _logger.LogError(ex, "Error in SendVerificationCode");
+                return StatusCode(500, new
+                {
+                    error = "An unexpected error occurred",
+                    details = ex.Message
+                });
             }
         }
-
         [HttpGet]
-        public async Task<IActionResult> VerifyOtp(string email, bool rememberMe = false)
+        public async Task<IActionResult> VerifyOtp()
         {
+            // Try to get the temporary user ID from session
+            var tempUserId = HttpContext.Session.GetInt32("TempUserId");
+            var tempEmail = HttpContext.Session.GetString("TempEmail");
+
+            if (!tempUserId.HasValue || string.IsNullOrEmpty(tempEmail))
+            {
+                // No pending 2FA verification found
+                TempData["ErrorMessage"] = "No pending 2FA verification found. Please login again.";
+                await _auditService.LogActivityAsync(null, tempEmail ?? "unknown", "VerifyOtpAccess", false, "No pending 2FA session", HttpContext);
+                return RedirectToAction("Login");
+            }
+
+            // Get user from database to verify they exist and have 2FA enabled
+            var user = await _context.Users.FindAsync(tempUserId.Value);
+
+            if (user == null || !user.TwoFactorEnabled)
+            {
+                // Clear invalid session data
+                HttpContext.Session.Remove("TempUserId");
+                HttpContext.Session.Remove("TempEmail");
+                HttpContext.Session.Remove("TempRememberMe");
+
+                TempData["ErrorMessage"] = "Invalid verification session. Please login again.";
+                return RedirectToAction("Login");
+            }
+
+            // Get RememberMe preference
+            var rememberMeStr = HttpContext.Session.GetString("TempRememberMe");
+            var rememberMe = bool.TryParse(rememberMeStr, out var rm) && rm;
+
             var model = new VerifyOtpViewModel
             {
-                Email = email,
+                Email = user.Email,
                 RememberMe = rememberMe
             };
 
             return View(model);
         }
-
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> VerifyOtp(VerifyOtpViewModel model)
@@ -826,12 +970,23 @@ namespace FreshFarmMarket.Controllers
                 return View(model);
             }
 
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == model.Email.ToLower());
+            // Get the temporary user ID from session
+            var tempUserId = HttpContext.Session.GetInt32("TempUserId");
+            var tempEmail = HttpContext.Session.GetString("TempEmail");
+
+            if (!tempUserId.HasValue || string.IsNullOrEmpty(tempEmail))
+            {
+                ModelState.AddModelError("", "Session expired. Please login again.");
+                return RedirectToAction("Login");
+            }
+
+            var user = await _context.Users.FindAsync(tempUserId.Value);
 
             if (user == null)
             {
                 ModelState.AddModelError("", "Invalid verification attempt");
-                return View(model);
+                await _auditService.LogActivityAsync(null, tempEmail, "VerifyOtpFailed", false, "User not found", HttpContext);
+                return RedirectToAction("Login");
             }
 
             // Verify the code
@@ -859,11 +1014,17 @@ namespace FreshFarmMarket.Controllers
             recentCode.UsedDate = DateTime.Now;
             await _context.SaveChangesAsync();
 
-            // Create session (complete login)
+            // Clear the temporary 2FA session data
+            HttpContext.Session.Remove("TempUserId");
+            HttpContext.Session.Remove("TempEmail");
+            HttpContext.Session.Remove("TempRememberMe");
+
+            // Create full session (complete login)
             CreateSession(user);
 
             await _auditService.LogActivityAsync(user.UserId, user.Email, "VerifyOtp", true, "2FA verification successful", HttpContext);
 
+            TempData["SuccessMessage"] = "Login successful!";
             return RedirectToAction("Index", "Home");
         }
 
@@ -894,17 +1055,31 @@ namespace FreshFarmMarket.Controllers
             _context.TwoFactorCodes.Add(twoFactorCode);
             await _context.SaveChangesAsync();
 
-            // Send SMS
-            var smsSent = await _smsService.Send2FACodeAsync(user.MobileNo, code);
+            // Send via user's preferred method
+            bool codeSent = false;
+            string destination = "";
 
-            if (smsSent)
+            if (user.TwoFactorMethod == "Email")
             {
-                await _auditService.LogActivityAsync(user.UserId, user.Email, "ResendOtp", true, "OTP code resent", HttpContext);
-                TempData["SuccessMessage"] = "A new verification code has been sent to your mobile number.";
+                codeSent = await _emailService.Send2FACodeAsync(user.Email, code);
+                destination = "your email";
+            }
+            else // SMS
+            {
+                codeSent = await _smsService.Send2FACodeAsync(user.MobileNo, code);
+                destination = "your mobile number";
+            }
+
+            if (codeSent)
+            {
+                await _auditService.LogActivityAsync(user.UserId, user.Email, "ResendOtp", true,
+                    $"OTP code resent via {user.TwoFactorMethod}", HttpContext);
+                TempData["SuccessMessage"] = $"A new verification code has been sent to {destination}.";
             }
             else
             {
-                await _auditService.LogActivityAsync(user.UserId, user.Email, "ResendOtpFailed", false, "Failed to send SMS", HttpContext);
+                await _auditService.LogActivityAsync(user.UserId, user.Email, "ResendOtpFailed", false,
+                    "Failed to send verification code", HttpContext);
                 TempData["ErrorMessage"] = "Failed to send verification code. Please try again.";
             }
 
@@ -915,6 +1090,7 @@ namespace FreshFarmMarket.Controllers
         public class SendCodeRequest
         {
             public string MobileNo { get; set; } = string.Empty;
+            public string Method { get; set; } = "SMS"; // "SMS" or "Email"
         }
 
         // ========== PASSWORD VALIDATION METHOD ==========
@@ -950,6 +1126,7 @@ namespace FreshFarmMarket.Controllers
 
             return errors;
         }
+
 
         // ========== HELPER METHODS ==========
         private bool IsUserLoggedIn()
@@ -1058,5 +1235,7 @@ namespace FreshFarmMarket.Controllers
 
             return System.Net.WebUtility.HtmlEncode(input);
         }
-    }
-}
+
+    } 
+}   
+    

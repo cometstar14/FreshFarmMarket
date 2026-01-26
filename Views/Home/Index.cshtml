@@ -74,8 +74,107 @@
                                         <td>@Model.LastLoginDate.Value.ToString("MMMM dd, yyyy hh:mm tt")</td>
                                     </tr>
                                 }
+                                <!-- NEW: Two-Factor Authentication Status -->
+                                <tr>
+                                    <th>Two-Factor Auth:</th>
+                                    <td>
+                                        @if (Model.TwoFactorEnabled)
+                                        {
+                                            <span class="badge bg-success">
+                                                <i class="fas fa-check-circle"></i> Enabled
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">
+                                                <i class="fas fa-times-circle"></i> Disabled
+                                            </span>
+                                        }
+                                    </td>
+                                </tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+
+                <!-- NEW: Security & Account Management Section -->
+                <hr class="my-4" />
+                <div class="row">
+                    <div class="col-md-12">
+                        <h4 class="mb-3">
+                            <i class="fas fa-shield-alt text-primary"></i> Security & Account Management
+                        </h4>
+                        <div class="row g-3">
+                            <!-- Change Password Card -->
+                            <div class="col-md-6">
+                                <div class="card border-primary h-100">
+                                    <div class="card-body">
+                                        <h5 class="card-title">
+                                            <i class="fas fa-key text-primary"></i> Change Password
+                                        </h5>
+                                        <p class="card-text">Update your account password to keep your account secure.</p>
+                                        <a asp-controller="Account" asp-action="ChangePassword" class="btn btn-primary">
+                                            <i class="fas fa-edit"></i> Change Password
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Two-Factor Authentication Card -->
+                            <div class="col-md-6">
+                                <div class="card border-warning h-100">
+                                    <div class="card-body">
+                                        <h5 class="card-title">
+                                            <i class="fas fa-mobile-alt text-warning"></i> Two-Factor Authentication
+                                        </h5>
+                                        <p class="card-text">
+                                            @if (Model.TwoFactorEnabled)
+                                            {
+                                                <span class="text-success fw-bold">
+                                                    <i class="fas fa-check-circle"></i> 2FA is currently enabled.
+                                                </span>
+                                                <br />
+                                                <small class="text-muted">You'll receive a code with your preferred method when logging in.</small>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">
+                                                    Add an extra layer of security to your account with SMS verification.
+                                                </span>
+                                            }
+                                        </p>
+                                        <a asp-controller="Account" asp-action="Enable2FA" class="btn btn-warning">
+                                            @if (Model.TwoFactorEnabled)
+                                            {
+                                                <i class="fas fa-cog"></i> <span>Manage 2FA</span>
+                                            }
+                                            else
+                                            {
+                                                <i class="fas fa-shield-alt"></i> <span>Enable 2FA</span>
+                                            }
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Security Info Alert -->
+                        @if (Model.TwoFactorEnabled)
+                        {
+                            <div class="alert alert-success mt-3 mb-0">
+                                <i class="fas fa-info-circle"></i>
+                                <strong>Your account is protected with Two-Factor Authentication!</strong>
+                                <br />
+                                <small>Every time you login, we'll send a verification code to your mobile number ending in <strong>***@Model.MobileNo.Substring(Model.MobileNo.Length - 4)</strong></small>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-info mt-3 mb-0">
+                                <i class="fas fa-lightbulb"></i>
+                                <strong>Tip:</strong> Enable Two-Factor Authentication to add an extra layer of security to your account!
+                            </div>
+                        }
                     </div>
                 </div>
             </div>
@@ -84,6 +183,9 @@
 </div>
 
 @section Scripts {
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    
     <script>
         function toggleCardDisplay() {
             var maskedCard = document.getElementById('maskedCard');

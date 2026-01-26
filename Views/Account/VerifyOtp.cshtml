@@ -11,7 +11,7 @@
             </div>
             <div class="card-body">
                 <div class="alert alert-info">
-                    <i class="fas fa-mobile-alt"></i> A 6-digit verification code has been sent to your mobile number.
+                    <i class="fas fa-mobile-alt"></i> Please enter a 6-digit verification code that has been sent.
                 </div>
 
                 <form asp-action="VerifyOtp" method="post" id="verifyOtpForm">
@@ -52,7 +52,7 @@
 </div>
 
 @section Scripts {
-    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <script>
         // Auto-submit when 6 digits entered
         document.getElementById('Code').addEventListener('input', function(e) {

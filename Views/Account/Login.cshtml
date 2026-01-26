@@ -23,6 +23,9 @@
                         <label asp-for="Password" class="form-label"></label>
                         <input asp-for="Password" class="form-control" type="password" />
                         <span asp-validation-for="Password" class="text-danger"></span>
+                        <div class="mt-2 text-end">
+                            <a asp-controller="Account" asp-action="ForgotPassword" class="text-primary">Forgot your password?</a>
+                        </div>
                     </div>
 
                     <div class="mb-3 form-check">
@@ -58,5 +61,5 @@
             });
         });
     </script>
-    <partial name="_ValidationScriptsPartial" />
+    
 }

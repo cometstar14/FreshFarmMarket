@@ -59,11 +59,13 @@ namespace FreshFarmMarket.Models
         public DateTime? CannotChangePasswordUntil { get; set; } 
 
         public bool TwoFactorEnabled { get; set; } = false;
+        [StringLength(20)]
+        public string? TwoFactorMethod { get; set; } = "SMS";
 
         [StringLength(500)]
         public string? TwoFactorSecret { get; set; }
 
-        [Required]
+        
         [StringLength(100)]
         public string? LastSessionId { get; set; }
 

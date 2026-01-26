@@ -19,7 +19,13 @@ namespace FreshFarmMarket.Filters
 
             // Allow access to Account actions without session
             if (controllerName.Contains("Account") &&
-                (actionName == "Login" || actionName == "Register"))
+                (actionName == "Login" ||
+                 actionName == "Register" ||
+                 actionName == "VerifyOtp" ||      // ← ADD THIS
+                 actionName == "ResendOtp" ||       // ← ADD THIS
+                 actionName == "ForgotPassword" ||  // ← ADD THIS (for password reset)
+                 actionName == "ResetPassword" ||   // ← ADD THIS
+                 actionName == "IsEmailAvailable")) // ← ADD THIS (AJAX endpoint)
             {
                 return;
             }

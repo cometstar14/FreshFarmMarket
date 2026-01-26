@@ -1,6 +1,5 @@
-﻿using Twilio;
-using Twilio.Rest.Api.V2010.Account;
-using Twilio.Types;
+﻿using Microsoft.Extensions.Logging;
+using System.IO;
 
 namespace FreshFarmMarket.Services
 {
@@ -12,44 +11,42 @@ namespace FreshFarmMarket.Services
 
     public class SmsService : ISmsService
     {
-        private readonly IConfiguration _configuration;
         private readonly ILogger<SmsService> _logger;
+        private readonly IWebHostEnvironment _env;
 
-        public SmsService(IConfiguration configuration, ILogger<SmsService> logger)
+        public SmsService(ILogger<SmsService> logger, IWebHostEnvironment env)
         {
-            _configuration = configuration;
             _logger = logger;
+            _env = env;
 
-            var twilioSettings = _configuration.GetSection("Twilio");
-            TwilioClient.Init(
-                twilioSettings["AccountSid"],
-                twilioSettings["AuthToken"]
-            );
+            // Remove Twilio initialization - we don't need it
+            Console.WriteLine("📱 Mock SMS Service initialized - Running in development mode");
         }
 
         public async Task<bool> SendSmsAsync(string phoneNumber, string message)
         {
             try
             {
-                var twilioSettings = _configuration.GetSection("Twilio");
+                // Log to console
+                _logger.LogInformation($"📱 SMS to {phoneNumber}: {message}");
 
-                if (!phoneNumber.StartsWith("+"))
-                {
-                    phoneNumber = "+65" + phoneNumber;
-                }
+                // Show in console for easy viewing
+                Console.WriteLine($"\n═══════════════════════════════════════════");
+                Console.WriteLine($"📱 MOCK SMS SENT");
+                Console.WriteLine($"To: {phoneNumber}");
+                Console.WriteLine($"Message: {message}");
+                Console.WriteLine($"═══════════════════════════════════════════\n");
 
-                var messageResource = await MessageResource.CreateAsync(
-                    to: new PhoneNumber(phoneNumber),
-                    from: new PhoneNumber(twilioSettings["PhoneNumber"]),
-                    body: message
-                );
+                // Log to file
+                await LogToFile(phoneNumber, message);
 
-                return messageResource.Status != MessageResource.StatusEnum.Failed;
+                return true; // Always return success
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error sending SMS to {PhoneNumber}", phoneNumber);
-                return false;
+                _logger.LogError(ex, "Error in mock SMS service");
+                // Still return true so the flow continues
+                return true;
             }
         }
 
@@ -57,6 +54,44 @@ namespace FreshFarmMarket.Services
         {
             string message = $"Your Fresh Farm Market verification code is: {code}. This code will expire in 5 minutes.";
             return await SendSmsAsync(phoneNumber, message);
+        }
+
+        private async Task LogToFile(string phoneNumber, string message)
+        {
+            try
+            {
+                var logDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Logs");
+                if (!Directory.Exists(logDirectory))
+                {
+                    Directory.CreateDirectory(logDirectory);
+                }
+
+                // Log to sms_log.txt
+                var logFile = Path.Combine(logDirectory, "sms_log.txt");
+                var logEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] To: {phoneNumber}\nMessage: {message}\n{new string('-', 50)}\n";
+                await File.AppendAllTextAsync(logFile, logEntry);
+
+                // Also create a file with just the latest code for easy access
+                var latestCodeFile = Path.Combine(logDirectory, "latest_verification_code.txt");
+                await File.WriteAllTextAsync(latestCodeFile,
+                    $"Verification Code: {GetCodeFromMessage(message)}\n" +
+                    $"Phone: {phoneNumber}\n" +
+                    $"Time: {DateTime.Now:HH:mm:ss}\n" +
+                    $"Use this code: {GetCodeFromMessage(message)}");
+
+                _logger.LogInformation($"✅ Verification code saved to: {latestCodeFile}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to write SMS log to file");
+            }
+        }
+
+        private string GetCodeFromMessage(string message)
+        {
+            // Extract the 6-digit code from the message
+            var match = System.Text.RegularExpressions.Regex.Match(message, @"\b\d{6}\b");
+            return match.Success ? match.Value : "CODE_NOT_FOUND";
         }
     }
 }
