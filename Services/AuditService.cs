@@ -21,28 +21,28 @@ namespace FreshFarmMarket.Services
             _logger = logger;
         }
 
-        public async Task LogActivityAsync(int? userId, string email, string action, bool success, string? details = null, HttpContext? httpContext = null)
+        public async Task LogActivityAsync(int? userId, string emailOrIdentifier, string action, bool success, , string? details = null, HttpContext? httpContext = null)
         {
             try
             {
-                // Sanitize email and details to prevent log injection
-                var sanitizedEmail = SanitizeLogInput(email);
-                var sanitizedDetails = SanitizeLogInput(details);
+                // Sanitize ALL user inputs before storing in database
+                
+                var sanitizedDetails = SanitizeForDatabase(details);
 
                 var auditLog = new AuditLog
                 {
                     UserId = userId,
-                    Email = sanitizedEmail,
+                    Email = emailOrIdentifier,  // Use sanitized version
                     Action = action,
                     Success = success,
-                    Details = sanitizedDetails,
+                    Details = sanitizedDetails,  // Use sanitized version
                     Timestamp = DateTime.Now
                 };
 
                 if (httpContext != null)
                 {
                     auditLog.IpAddress = httpContext.Connection.RemoteIpAddress?.ToString();
-                    auditLog.UserAgent = SanitizeLogInput(httpContext.Request.Headers["User-Agent"].ToString());
+                    auditLog.UserAgent = SanitizeForDatabase(httpContext.Request.Headers["User-Agent"].ToString());
                 }
 
                 _context.AuditLogs.Add(auditLog);
@@ -50,8 +50,22 @@ namespace FreshFarmMarket.Services
             }
             catch (Exception ex)
             {
-               _logger.LogError(ex, "Error logging audit activity for user {Email}", SanitizeLogInput(email));
+                
+                _logger.LogError(ex, "Error saving audit log");
             }
+        }
+
+        private string SanitizeForDatabase(string? input)
+        {
+            if (string.IsNullOrEmpty(input))
+                return string.Empty;
+
+            // Remove any dangerous characters for database storage
+            return System.Text.RegularExpressions.Regex.Replace(input,
+                @"[\r\n\t\\\/\|\`\$\{\}\[\]\(\)\*\&\^\%\#\@\!\~\=\+\<\>\?\:\;""']",
+                " ")
+                .Trim()
+                .Substring(0, Math.Min(input.Length, 1000));
         }
         private string SanitizeLogInput(string? input)
         {

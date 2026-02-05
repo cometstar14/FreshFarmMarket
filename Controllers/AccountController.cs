@@ -88,7 +88,7 @@ namespace FreshFarmMarket.Controllers
             if (await _context.Users.AnyAsync(u => u.Email == model.Email))
             {
                 ModelState.AddModelError("Email", "Email already exists");
-                await _auditService.LogActivityAsync(null, model.Email, "RegistrationFailed", false, "Email already exists", HttpContext);
+                await LogAuditAsync(null, "RegistrationFailed", false, "Email already exists");
                 return View(model);
             }
 
@@ -162,7 +162,7 @@ namespace FreshFarmMarket.Controllers
                 _context.PasswordHistories.Add(passwordHistory);
                 await _context.SaveChangesAsync();
 
-                await _auditService.LogActivityAsync(user.UserId, user.Email, "Registration", true, "User registered successfully", HttpContext);
+                await LogAuditAsync(user.UserId, "Registration", true, "User registered successfully");
 
                 TempData["SuccessMessage"] = "Registration successful! Please login.";
                 return RedirectToAction("Login");
@@ -175,7 +175,7 @@ namespace FreshFarmMarket.Controllers
                 }
 
                 ModelState.AddModelError("", "An error occurred during registration. Please try again.");
-                await _auditService.LogActivityAsync(null, model.Email, "RegistrationFailed", false, ex.Message, HttpContext);
+                await LogAuditAsync(null, "RegistrationFailed", false, "Registration error occurred");
                 return View(model);
             }
         }
@@ -238,7 +238,7 @@ namespace FreshFarmMarket.Controllers
             if (user == null)
             {
                 ModelState.AddModelError("", "Invalid email or password");
-                await _auditService.LogActivityAsync(null, model.Email, "LoginFailed", false, "User not found", HttpContext);
+                await LogAuditAsync(null, "LoginFailed", false, "User not found");
                 return View(model);
             }
 
@@ -258,7 +258,7 @@ namespace FreshFarmMarket.Controllers
                         (user.LockoutEndDate.Value.AddMinutes(autoUnlockMinutes) - DateTime.Now).TotalMinutes : 0;
 
                     ModelState.AddModelError("", $"Account is locked. Please try again in {Math.Ceiling(remainingTime)} minutes.");
-                    await _auditService.LogActivityAsync(user.UserId, user.Email, "LoginFailed", false, "Account locked", HttpContext);
+                    await LogAuditAsync(user.UserId, "LoginFailed", false, "Account locked");
                     return View(model);
                 }
             }
@@ -280,14 +280,14 @@ namespace FreshFarmMarket.Controllers
                     await _context.SaveChangesAsync();
 
                     ModelState.AddModelError("", $"Too many failed login attempts. Account locked for {lockoutDuration} minutes.");
-                    await _auditService.LogActivityAsync(user.UserId, user.Email, "AccountLocked", true, "Max login attempts exceeded", HttpContext);
+                    await LogAuditAsync(user.UserId, "AccountLocked", true, "Max login attempts exceeded");
                 }
                 else
                 {
                     await _context.SaveChangesAsync();
                     var attemptsLeft = maxAttempts - user.LoginAttempts;
                     ModelState.AddModelError("", $"Invalid email or password. {attemptsLeft} attempts remaining.");
-                    await _auditService.LogActivityAsync(user.UserId, user.Email, "LoginFailed", false, "Invalid password", HttpContext);
+                    await LogAuditAsync(user.UserId, "LoginFailed", false, "Invalid password");
                 }
 
                 return View(model);
@@ -305,14 +305,12 @@ namespace FreshFarmMarket.Controllers
                 await _context.SaveChangesAsync();
 
                 // Log the security event
-                await _auditService.LogActivityAsync(
-                    user.UserId,
-                    user.Email,
-                    "MultipleLoginPrevented",
-                    true,
-                    $"Cleared {existingSessionCount} existing session(s) before new login from {HttpContext.Connection.RemoteIpAddress}",
-                    HttpContext
-                );
+                await LogAuditAsync(
+    user.UserId,
+    "MultipleLoginPrevented",
+    true,
+    $"Cleared {existingSessionCount} existing session(s) from another location"
+);
 
                 TempData["InfoMessage"] = $"You were logged out from {existingSessionCount} other device(s).";
             }
@@ -364,22 +362,19 @@ namespace FreshFarmMarket.Controllers
                     {
                         codeSent = await _emailService.Send2FACodeAsync(user.Email, code);
                         destination = "your email";
-                        await _auditService.LogActivityAsync(user.UserId, user.Email, "Login2FAInitiated", true,
-                            $"2FA code sent via Email to {user.Email}", HttpContext);
+                        await LogAuditAsync(user.UserId, "Login2FAInitiated", true, "2FA code sent via Email");
                     }
                     else // Default to SMS
                     {
                         codeSent = await _smsService.Send2FACodeAsync(user.MobileNo, code);
                         destination = "your mobile number";
-                        await _auditService.LogActivityAsync(user.UserId, user.Email, "Login2FAInitiated", true,
-                            $"2FA code sent via SMS to {user.MobileNo}", HttpContext);
+                        await LogAuditAsync(user.UserId, "Login2FAInitiated", true, "2FA code sent via SMS");
                     }
 
                     if (!codeSent)
                     {
                         ModelState.AddModelError("", "Failed to send verification code. Please try again.");
-                        await _auditService.LogActivityAsync(user.UserId, user.Email, "Login2FAFailed", false,
-                            "Failed to send 2FA code", HttpContext);
+                        await LogAuditAsync(user.UserId, "Login2FAFailed", false, "Failed to send 2FA code");
                         return View(model);
                     }
 
@@ -397,7 +392,7 @@ namespace FreshFarmMarket.Controllers
 
             CreateSession(user);
 
-            await _auditService.LogActivityAsync(user.UserId, user.Email, "Login", true, "Successful login", HttpContext);
+            await LogAuditAsync(user.UserId, "Login", true, "Successful login");
 
             if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
             {
@@ -444,7 +439,7 @@ namespace FreshFarmMarket.Controllers
                     }
                 }
 
-                await _auditService.LogActivityAsync(userId.Value, email, "Logout", true, "User logged out", HttpContext);
+                await LogAuditAsync(userId.Value, "Logout", true, "User logged out");
             }
 
             HttpContext.Session.Clear();
@@ -501,7 +496,7 @@ namespace FreshFarmMarket.Controllers
             if (!_encryptionService.VerifyPassword(model.CurrentPassword, user.PasswordHash, user.Salt))
             {
                 ModelState.AddModelError("CurrentPassword", "Current password is incorrect");
-                await _auditService.LogActivityAsync(user.UserId, user.Email, "ChangePasswordFailed", false, "Incorrect current password", HttpContext);
+                await LogAuditAsync(user.UserId, "ChangePasswordFailed", false, "Incorrect current password");
                 return View(model);
             }
 
@@ -514,7 +509,7 @@ namespace FreshFarmMarket.Controllers
                 {
                     var remainingMinutes = Math.Ceiling(minPasswordAgeMinutes - minutesSinceLastChange);
                     ModelState.AddModelError("", $"You cannot change your password yet. Please wait {remainingMinutes} more minutes.");
-                    await _auditService.LogActivityAsync(user.UserId, user.Email, "ChangePasswordFailed", false, "Minimum password age not met", HttpContext);
+                    await LogAuditAsync(user.UserId, "ChangePasswordFailed", false, "Minimum password age not met");
                     return View(model);
                 }
             }
@@ -531,7 +526,7 @@ namespace FreshFarmMarket.Controllers
                 if (_encryptionService.VerifyPassword(model.NewPassword, oldPassword.PasswordHash, oldPassword.Salt ?? ""))
                 {
                     ModelState.AddModelError("NewPassword", $"You cannot reuse your last {passwordHistoryCount} passwords");
-                    await _auditService.LogActivityAsync(user.UserId, user.Email, "ChangePasswordFailed", false, "Password reuse detected", HttpContext);
+                    await LogAuditAsync(user.UserId, "ChangePasswordFailed", false, "Password reuse detected");
                     return View(model);
                 }
             }
@@ -555,8 +550,7 @@ namespace FreshFarmMarket.Controllers
             _context.PasswordHistories.Add(passwordHistory);
 
             await _context.SaveChangesAsync();
-            await _auditService.LogActivityAsync(user.UserId, user.Email, "ChangePassword", true, "Password changed successfully", HttpContext);
-
+            await LogAuditAsync(user.UserId, "ChangePassword", true, "Password changed successfully");
             TempData["SuccessMessage"] = "Password changed successfully!";
             return RedirectToAction("Index", "Home");
         }
@@ -579,17 +573,17 @@ namespace FreshFarmMarket.Controllers
         public async Task<IActionResult> ForgotPassword(ForgotPasswordViewModel model)
         {
 
-            _logger.LogInformation("=== FORGOT PASSWORD POST CALLED ===");
-            _logger.LogInformation("Forgot password request received for email: {Email}",
-                SanitizeEmailForLogging(model.Email));
-            _logger.LogInformation("Recaptcha token present: {HasToken}",
-                !string.IsNullOrEmpty(model.RecaptchaToken));
-            _logger.LogInformation("ModelState.IsValid: {IsValid}", ModelState.IsValid);
+            // ✅ MINIMAL LOGGING -Don't log user input at all
+            _logger.LogInformation("Forgot password request received");
+
+            // Don't log the email or recaptcha token details
+            _logger.LogInformation("Model validation status: {IsValid}", ModelState.IsValid);
 
             if (!ModelState.IsValid)
             {
-                _logger.LogInformation("ModelState INVALID");
-                // Don't log specific errors as they might contain user input
+                _logger.LogInformation("Model validation failed");
+                ViewBag.ReCaptchaSiteKey = _configuration["ReCaptcha:SiteKey"];
+                return View(model);
             }
             // ⭐ ADD THIS LINE
             ViewBag.ReCaptchaSiteKey = _configuration["ReCaptcha:SiteKey"];
@@ -613,7 +607,7 @@ namespace FreshFarmMarket.Controllers
             if (user == null)
             {
                 TempData["SuccessMessage"] = "If an account with that email exists, a password reset link has been sent.";
-                await _auditService.LogActivityAsync(null, model.Email, "ForgotPasswordFailed", false, "Email not found", HttpContext);
+                await LogAuditAsync(null, "ForgotPasswordFailed", false, "Email not found");
                 return RedirectToAction("Login");
             }
 
@@ -643,12 +637,12 @@ namespace FreshFarmMarket.Controllers
 
             if (emailSent)
             {
-                await _auditService.LogActivityAsync(user.UserId, user.Email, "ForgotPassword", true, "Reset link sent", HttpContext);
+                await LogAuditAsync(user.UserId, "ForgotPassword", true, "Password reset link sent");
                 TempData["SuccessMessage"] = "A password reset link has been sent to your email address.";
             }
             else
             {
-                await _auditService.LogActivityAsync(user.UserId, user.Email, "ForgotPasswordFailed", false, "Email sending failed", HttpContext);
+                await LogAuditAsync(user.UserId, "ForgotPasswordFailed", false, "Email sending failed");
                 TempData["ErrorMessage"] = "Failed to send reset email. Please try again later.";
             }
 
@@ -733,7 +727,7 @@ namespace FreshFarmMarket.Controllers
                 if (_encryptionService.VerifyPassword(model.NewPassword, oldPassword.PasswordHash, oldPassword.Salt ?? ""))
                 {
                     ModelState.AddModelError("NewPassword", $"You cannot reuse your last {passwordHistoryCount} passwords");
-                    await _auditService.LogActivityAsync(user.UserId, user.Email, "ResetPasswordFailed", false, "Password reuse detected", HttpContext);
+                    await LogAuditAsync(user.UserId, "ResetPasswordFailed", false, "Password reuse detected");
                     return View(model);
                 }
             }
@@ -764,7 +758,7 @@ namespace FreshFarmMarket.Controllers
             _context.PasswordHistories.Add(passwordHistory);
 
             await _context.SaveChangesAsync();
-            await _auditService.LogActivityAsync(user.UserId, user.Email, "ResetPassword", true, "Password reset successfully", HttpContext);
+            await LogAuditAsync(user.UserId, "ResetPassword", true, "Password reset successfully");
 
             TempData["SuccessMessage"] = "Your password has been reset successfully! Please login with your new password.";
             return RedirectToAction("Login");
@@ -840,8 +834,8 @@ namespace FreshFarmMarket.Controllers
             recentCode.UsedDate = DateTime.Now;
 
             await _context.SaveChangesAsync();
-            await _auditService.LogActivityAsync(user.UserId, user.Email, "Enable2FA", true,
-                $"Two-Factor Authentication enabled via {model.TwoFactorMethod}", HttpContext);
+            await LogAuditAsync(user.UserId, "Enable2FA", true,
+            $"Two-Factor Authentication enabled via {model.TwoFactorMethod}");
 
             TempData["SuccessMessage"] = $"Two-Factor Authentication has been enabled successfully via {model.TwoFactorMethod}!";
             return RedirectToAction("Index", "Home");
@@ -862,7 +856,7 @@ namespace FreshFarmMarket.Controllers
 
             user.TwoFactorEnabled = false;
             await _context.SaveChangesAsync();
-            await _auditService.LogActivityAsync(user.UserId, user.Email, "Disable2FA", true, "Two-Factor Authentication disabled", HttpContext);
+            await LogAuditAsync(user.UserId, "Disable2FA", true, "Two-Factor Authentication disabled");
 
             TempData["SuccessMessage"] = "Two-Factor Authentication has been disabled.";
             return RedirectToAction("Enable2FA");
@@ -918,26 +912,24 @@ namespace FreshFarmMarket.Controllers
                     sent = await _emailService.Send2FACodeAsync(user.Email, code);
                     destination = user.Email;
 
-                    await _auditService.LogActivityAsync(
+                    await LogAuditAsync(
                         user.UserId,
-                        user.Email,
                         "SendVerificationCode",
                         true,
-                        $"Email verification code sent",  
-                        HttpContext);
+                        "Email verification code sent"
+                    );
                 }
                 else // SMS
                 {
                     sent = await _smsService.Send2FACodeAsync(request.MobileNo, code);
                     destination = request.MobileNo;
 
-                    await _auditService.LogActivityAsync(
+                    await LogAuditAsync(
                         user.UserId,
-                        user.Email,
                         "SendVerificationCode",
                         true,
-                        $"SMS verification code sent",  
-                        HttpContext);
+                        "SMS verification code sent"
+                    );
                 }
                 return Ok(new
                 {
@@ -970,7 +962,7 @@ namespace FreshFarmMarket.Controllers
             {
                 // No pending 2FA verification found
                 TempData["ErrorMessage"] = "No pending 2FA verification found. Please login again.";
-                await _auditService.LogActivityAsync(null, tempEmail ?? "unknown", "VerifyOtpAccess", false, "No pending 2FA session", HttpContext);
+                await LogAuditAsync(null, "VerifyOtpAccess", false, "No pending 2FA session");
                 return RedirectToAction("Login");
             }
 
@@ -1024,7 +1016,7 @@ namespace FreshFarmMarket.Controllers
             if (user == null)
             {
                 ModelState.AddModelError("", "Invalid verification attempt");
-                await _auditService.LogActivityAsync(null, tempEmail, "VerifyOtpFailed", false, "User not found", HttpContext);
+                await LogAuditAsync(null, "VerifyOtpFailed", false, "User not found");
                 return RedirectToAction("Login");
             }
 
@@ -1037,14 +1029,14 @@ namespace FreshFarmMarket.Controllers
             if (recentCode == null || recentCode.Code != model.Code)
             {
                 ModelState.AddModelError("Code", "Invalid verification code");
-                await _auditService.LogActivityAsync(user.UserId, user.Email, "VerifyOtpFailed", false, "Invalid OTP code", HttpContext);
+                await LogAuditAsync(user.UserId, "VerifyOtpFailed", false, "Invalid OTP code");
                 return View(model);
             }
 
             if (DateTime.Now > recentCode.ExpirationDate)
             {
-                ModelState.AddModelError("Code", "Verification code has expired. Please request a new one.");
-                await _auditService.LogActivityAsync(user.UserId, user.Email, "VerifyOtpFailed", false, "Expired OTP code", HttpContext);
+                ModelState.AddModelError("Code", "Verification code has expired. Please request a new one."); 
+                        
                 return View(model);
             }
 
@@ -1061,7 +1053,7 @@ namespace FreshFarmMarket.Controllers
             // Create full session (complete login)
             CreateSession(user);
 
-            await _auditService.LogActivityAsync(user.UserId, user.Email, "VerifyOtp", true, "2FA verification successful", HttpContext);
+            await LogAuditAsync(user.UserId, "VerifyOtp", true, "2FA verification successful");
 
             TempData["SuccessMessage"] = "Login successful!";
             return RedirectToAction("Index", "Home");
@@ -1111,14 +1103,14 @@ namespace FreshFarmMarket.Controllers
 
             if (codeSent)
             {
-                await _auditService.LogActivityAsync(user.UserId, user.Email, "ResendOtp", true,
-                    $"OTP code resent via {user.TwoFactorMethod}", HttpContext);
+                await LogAuditAsync(user.UserId, "ResendOtp", true,
+                    $"OTP code resent via {user.TwoFactorMethod}");
                 TempData["SuccessMessage"] = $"A new verification code has been sent to {destination}.";
             }
             else
             {
-                await _auditService.LogActivityAsync(user.UserId, user.Email, "ResendOtpFailed", false,
-                    "Failed to send verification code", HttpContext);
+                await LogAuditAsync(user.UserId, "ResendOtpFailed", false,
+                    "Failed to send verification code");
                 TempData["ErrorMessage"] = "Failed to send verification code. Please try again.";
             }
 
@@ -1238,6 +1230,36 @@ namespace FreshFarmMarket.Controllers
             user.LastLoginDate = DateTime.Now;
             user.LastSessionId = compositeKey; // Store the composite key
             _context.SaveChanges();
+        }
+
+        private async Task LogAuditAsync(int? userId, string action, bool success, string details = "")
+        {
+            // Sanitize details
+            var sanitizedDetails = SanitizeForLogging(details);
+
+            // Use generic identifier
+            string genericIdentifier = userId.HasValue ? $"user_{userId}" : "anonymous";
+
+            await _auditService.LogActivityAsync(
+                userId,
+                genericIdentifier,  
+                action,
+                success,
+                sanitizedDetails,
+                HttpContext);
+        }
+
+        private string SanitizeForLogging(string input)
+        {
+            if (string.IsNullOrEmpty(input))
+                return string.Empty;
+
+            // Remove dangerous characters
+            return System.Text.RegularExpressions.Regex.Replace(input,
+                @"[\r\n\t\\\/\|\`\$\{\}\[\]\(\)\*\&\^\%\#\@\!\~\=\+\<\>\?\:\;""']",
+                " ")
+                .Trim()
+                .Substring(0, Math.Min(input.Length, 200));
         }
 
         private async Task<string> SavePhotoAsync(IFormFile photo)
