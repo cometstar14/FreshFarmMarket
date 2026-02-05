@@ -27,29 +27,73 @@ namespace FreshFarmMarket.Services
         {
             try
             {
-                // Log to console
-                _logger.LogInformation($"📱 SMS to {phoneNumber}: {message}");
+                // ✅ FIX 1: Use structured logging
+                var sanitizedPhone = SanitizePhoneNumber(phoneNumber);
+                var sanitizedMessage = SanitizeLogInput(message);
+
+                _logger.LogInformation("SMS sent to {PhoneNumber}: {Message}",
+                    sanitizedPhone, sanitizedMessage);
 
                 // Show in console for easy viewing
                 Console.WriteLine($"\n═══════════════════════════════════════════");
                 Console.WriteLine($"📱 MOCK SMS SENT");
-                Console.WriteLine($"To: {phoneNumber}");
-                Console.WriteLine($"Message: {message}");
+                Console.WriteLine($"To: {sanitizedPhone}");  // Use sanitized
+                Console.WriteLine($"Message: {sanitizedMessage.Substring(0, Math.Min(sanitizedMessage.Length, 50))}...");  // Truncate
                 Console.WriteLine($"═══════════════════════════════════════════\n");
 
-                // Log to file
-                await LogToFile(phoneNumber, message);
+                // Log to file with sanitized data
+                await LogToFile(sanitizedPhone, sanitizedMessage);
 
-                return true; // Always return success
+                return true;
             }
             catch (Exception ex)
             {
                 var sanitizedPhone = SanitizePhoneNumber(phoneNumber);
                 _logger.LogError(ex, "Error sending SMS to {PhoneNumber}", sanitizedPhone);
                 return false;
-            } 
+            }
         }
-            private string SanitizePhoneNumber(string phoneNumber)
+
+        private string SanitizeLogInput(string? input)
+        {
+            if (string.IsNullOrEmpty(input))
+                return string.Empty;
+
+            // Step 1: Remove newlines, tabs, and carriage returns
+            var sanitized = input
+                .Replace("\r", "[CR]")
+                .Replace("\n", "[LF]")
+                .Replace("\t", "[TAB]")
+                .Replace("\0", "[NULL]");
+
+            // Step 2: Remove control characters (ASCII 0-31, except tab/newline which we already handled)
+            sanitized = System.Text.RegularExpressions.Regex.Replace(sanitized,
+                @"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", string.Empty);
+
+            // Step 3: Remove any log injection patterns
+            // Prevent multiline log entries that could break log format
+            sanitized = System.Text.RegularExpressions.Regex.Replace(sanitized,
+                @"(\|\||\&\&|;|\||\`|\$|{|}|\[|\]|\(|\)|\*|\&|\^|%|#|@|!|~|=|\+|<|>|?|:|;|""|'|\\|/)",
+                " ");
+
+            // Step 4: Truncate to prevent log flooding attacks
+            const int MAX_LOG_LENGTH = 500;
+            if (sanitized.Length > MAX_LOG_LENGTH)
+            {
+                sanitized = sanitized.Substring(0, MAX_LOG_LENGTH) + "...[TRUNCATED]";
+            }
+
+            // Step 5: Remove any remaining dangerous sequences
+            sanitized = System.Text.RegularExpressions.Regex.Replace(sanitized,
+                @"(javascript:|data:|vbscript:|on\w+\s*=)",
+                "[REMOVED]",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            // Step 6: Trim and return
+            return sanitized.Trim();
+        }
+
+        private string SanitizePhoneNumber(string phoneNumber)
         {
             if (string.IsNullOrEmpty(phoneNumber))
                 return "unknown";

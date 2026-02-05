@@ -32,10 +32,10 @@ namespace FreshFarmMarket.Services
                 var auditLog = new AuditLog
                 {
                     UserId = userId,
-                    Email = email,
+                    Email = sanitizedEmail,
                     Action = action,
                     Success = success,
-                    Details = details,
+                    Details = sanitizedDetails,
                     Timestamp = DateTime.Now
                 };
 
@@ -50,7 +50,7 @@ namespace FreshFarmMarket.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error logging audit activity for user {Email}", email);
+               _logger.LogError(ex, "Error logging audit activity for user {Email}", SanitizeLogInput(email));
             }
         }
         private string SanitizeLogInput(string? input)

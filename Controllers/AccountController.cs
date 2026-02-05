@@ -580,17 +580,16 @@ namespace FreshFarmMarket.Controllers
         {
 
             _logger.LogInformation("=== FORGOT PASSWORD POST CALLED ===");
-            _logger.LogInformation($"Email received: {model.Email}");
-            _logger.LogInformation($"RecaptchaToken: {model.RecaptchaToken}");
-            _logger.LogInformation($"ModelState.IsValid: {ModelState.IsValid}");
+            _logger.LogInformation("Forgot password request received for email: {Email}",
+                SanitizeEmailForLogging(model.Email));
+            _logger.LogInformation("Recaptcha token present: {HasToken}",
+                !string.IsNullOrEmpty(model.RecaptchaToken));
+            _logger.LogInformation("ModelState.IsValid: {IsValid}", ModelState.IsValid);
 
             if (!ModelState.IsValid)
             {
-                _logger.LogInformation("ModelState INVALID - Errors:");
-                foreach (var error in ModelState.Values.SelectMany(v => v.Errors))
-                {
-                    _logger.LogInformation($"  - {error.ErrorMessage}");
-                }
+                _logger.LogInformation("ModelState INVALID");
+                // Don't log specific errors as they might contain user input
             }
             // ⭐ ADD THIS LINE
             ViewBag.ReCaptchaSiteKey = _configuration["ReCaptcha:SiteKey"];
@@ -870,6 +869,7 @@ namespace FreshFarmMarket.Controllers
         }
 
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> SendVerificationCode([FromBody] SendCodeRequest request)
         {
             try
@@ -923,7 +923,7 @@ namespace FreshFarmMarket.Controllers
                         user.Email,
                         "SendVerificationCode",
                         true,
-                        $"Email verification code {code} sent to {user.Email}",
+                        $"Email verification code sent",  
                         HttpContext);
                 }
                 else // SMS
@@ -936,10 +936,9 @@ namespace FreshFarmMarket.Controllers
                         user.Email,
                         "SendVerificationCode",
                         true,
-                        $"SMS verification code {code} sent to {request.MobileNo}",
+                        $"SMS verification code sent",  
                         HttpContext);
                 }
-
                 return Ok(new
                 {
                     success = true,
@@ -1265,6 +1264,32 @@ namespace FreshFarmMarket.Controllers
             {
                 return string.Empty;
             }
+        }
+        private string SanitizeEmailForLogging(string email)
+        {
+            if (string.IsNullOrEmpty(email))
+                return "unknown";
+
+            // Simple email sanitization for logging
+            var parts = email.Split('@');
+            if (parts.Length == 2)
+            {
+                var username = parts[0];
+                var domain = parts[1];
+
+                // Mask part of the username for privacy
+                if (username.Length > 3)
+                {
+                    username = username.Substring(0, 3) + "***";
+                }
+
+                return $"{username}@{domain}";
+            }
+
+            // If not a valid email format, just sanitize it
+            return System.Text.RegularExpressions.Regex.Replace(email,
+                @"[^\w\.@-]", "?", System.Text.RegularExpressions.RegexOptions.None,
+                TimeSpan.FromMilliseconds(500));
         }
 
         private void DeletePhoto(string photoPath)
