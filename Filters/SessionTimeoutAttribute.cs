@@ -8,8 +8,6 @@ namespace FreshFarmMarket.Filters
     {
         public override void OnActionExecuting(ActionExecutingContext context)
         {
-            
-
             var httpContext = context.HttpContext;
             var session = httpContext.Session;
 
@@ -21,11 +19,11 @@ namespace FreshFarmMarket.Filters
             if (controllerName.Contains("Account") &&
                 (actionName == "Login" ||
                  actionName == "Register" ||
-                 actionName == "VerifyOtp" ||      // ← ADD THIS
-                 actionName == "ResendOtp" ||       // ← ADD THIS
-                 actionName == "ForgotPassword" ||  // ← ADD THIS (for password reset)
-                 actionName == "ResetPassword" ||   // ← ADD THIS
-                 actionName == "IsEmailAvailable")) // ← ADD THIS (AJAX endpoint)
+                 actionName == "VerifyOtp" ||
+                 actionName == "ResendOtp" ||
+                 actionName == "ForgotPassword" ||
+                 actionName == "ResetPassword" ||
+                 actionName == "IsEmailAvailable"))
             {
                 return;
             }
@@ -35,7 +33,52 @@ namespace FreshFarmMarket.Filters
 
             if (userId.HasValue)
             {
-                // Check session last activity
+                // ============================================================
+                // CRITICAL: Multiple Login Detection
+                // Strategy: Use composite key (SessionId_TabId) if TabId exists,
+                // otherwise fall back to just SessionId for backward compatibility
+                // ============================================================
+                var currentSessionId = session.GetString("SessionId");
+                var currentTabId = session.GetString("TabId"); // Get from session, not header
+
+                var sessionTracking = httpContext.RequestServices.GetService<ISessionTrackingService>();
+
+                if (!string.IsNullOrEmpty(currentSessionId) && sessionTracking != null)
+                {
+                    string keyToCheck;
+
+                    // If we have a TabId stored in session, use composite key
+                    // Otherwise, use just SessionId (for browsers without JS)
+                    if (!string.IsNullOrEmpty(currentTabId))
+                    {
+                        keyToCheck = $"{currentSessionId}_{currentTabId}";
+                    }
+                    else
+                    {
+                        keyToCheck = currentSessionId;
+                    }
+
+                    // Check if this session/tab combination is still valid
+                    var isSessionActive = sessionTracking.IsSessionActive(keyToCheck, userId.Value);
+
+                    if (!isSessionActive)
+                    {
+                        // This session/tab was terminated by another login
+                        session.Clear();
+
+                        // Redirect to login with multiple login message
+                        context.Result = new RedirectToActionResult("Login", "Account", new
+                        {
+                            multiple = "true"
+                        });
+                        return;
+                    }
+                }
+                // ============================================================
+                // END OF MULTIPLE LOGIN DETECTION
+                // ============================================================
+
+                // Check session last activity for timeout
                 var lastActivityStr = session.GetString("LastActivity");
 
                 if (!string.IsNullOrEmpty(lastActivityStr))
@@ -45,14 +88,19 @@ namespace FreshFarmMarket.Filters
 
                     if (DateTime.UtcNow > lastActivity.AddMinutes(timeoutMinutes))
                     {
-                        // Session expired
-                        var sessionId = session.GetString("SessionId");
-                        if (!string.IsNullOrEmpty(sessionId))
+                        // Session expired due to inactivity
+                        if (!string.IsNullOrEmpty(currentSessionId) && sessionTracking != null)
                         {
-                            var sessionTracking = httpContext.RequestServices
-                                .GetService<ISessionTrackingService>();
-                            sessionTracking?.RemoveSession(sessionId);
+                            // Remove both possible keys (with and without TabId)
+                            if (!string.IsNullOrEmpty(currentTabId))
+                            {
+                                sessionTracking.RemoveSession($"{currentSessionId}_{currentTabId}");
+                            }
+                            sessionTracking.RemoveSession(currentSessionId);
                         }
+
+                        // Clear session
+                        session.Clear();
 
                         // Store attempted URL for redirect after login
                         var returnUrl = httpContext.Request.Path + httpContext.Request.QueryString;

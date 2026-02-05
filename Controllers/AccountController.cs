@@ -3,6 +3,7 @@ using FreshFarmMarket.Models;
 using FreshFarmMarket.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
 namespace FreshFarmMarket.Controllers
@@ -262,9 +263,10 @@ namespace FreshFarmMarket.Controllers
                 }
             }
 
+
             if (!_encryptionService.VerifyPassword(model.Password, user.PasswordHash, user.Salt))
             {
-                var activeSessions = _sessionTrackingService.GetActiveSessionCount(user.UserId);
+
 
                 user.LoginAttempts++;
 
@@ -289,6 +291,30 @@ namespace FreshFarmMarket.Controllers
                 }
 
                 return View(model);
+            }
+
+            var existingSessionCount = _sessionTrackingService.GetActiveSessionCount(user.UserId);
+
+            if (existingSessionCount > 0)
+            {
+                // Clear all existing sessions for this user
+                _sessionTrackingService.ClearAllUserSessions(user.UserId);
+
+                // Update database to clear old session ID
+                user.LastSessionId = null;
+                await _context.SaveChangesAsync();
+
+                // Log the security event
+                await _auditService.LogActivityAsync(
+                    user.UserId,
+                    user.Email,
+                    "MultipleLoginPrevented",
+                    true,
+                    $"Cleared {existingSessionCount} existing session(s) before new login from {HttpContext.Connection.RemoteIpAddress}",
+                    HttpContext
+                );
+
+                TempData["InfoMessage"] = $"You were logged out from {existingSessionCount} other device(s).";
             }
 
             var existingSessionId = HttpContext.Session.GetString("UserId");
@@ -388,21 +414,34 @@ namespace FreshFarmMarket.Controllers
             var userId = GetCurrentUserId();
             var email = HttpContext.Session.GetString("Email");
             var sessionId = HttpContext.Session.GetString("SessionId");
+            var tabId = HttpContext.Session.GetString("TabId");
 
-            // Remove from session tracking
+            // Remove BOTH keys from session tracking (composite and simple)
             if (!string.IsNullOrEmpty(sessionId))
             {
+                // Remove composite key if TabId exists
+                if (!string.IsNullOrEmpty(tabId))
+                {
+                    var compositeKey = $"{sessionId}_{tabId}";
+                    _sessionTrackingService.RemoveSession(compositeKey);
+                }
+
+                // Also remove plain SessionId key
                 _sessionTrackingService.RemoveSession(sessionId);
             }
 
             if (userId.HasValue)
             {
-                // Clear session ID from database
+                // Clear session ID from database only if this was the last active session
                 var user = await _context.Users.FindAsync(userId.Value);
-                if (user != null && user.LastSessionId == sessionId)
+                if (user != null)
                 {
-                    user.LastSessionId = null;
-                    await _context.SaveChangesAsync();
+                    var remainingSessions = _sessionTrackingService.GetActiveSessionCount(userId.Value);
+                    if (remainingSessions == 0)
+                    {
+                        user.LastSessionId = null;
+                        await _context.SaveChangesAsync();
+                    }
                 }
 
                 await _auditService.LogActivityAsync(userId.Value, email, "Logout", true, "User logged out", HttpContext);
@@ -1144,45 +1183,60 @@ namespace FreshFarmMarket.Controllers
             // Clear any existing session first
             HttpContext.Session.Clear();
 
-            // Check if user is already logged in elsewhere
+            // Get the TabId from the request header (sent by JavaScript)
+            var tabIdFromHeader = HttpContext.Request.Headers["X-Tab-Id"].ToString();
+
+            // Use TabId from header if available, otherwise generate one
+            // This ensures backward compatibility for browsers without JavaScript
+            var tabId = !string.IsNullOrEmpty(tabIdFromHeader)
+                ? tabIdFromHeader
+                : Guid.NewGuid().ToString();
+
+            // Check if user is already logged in elsewhere (any tab/browser)
             var existingSessions = _sessionTrackingService.GetActiveSessionCount(user.UserId);
 
             if (existingSessions > 0)
             {
-                // Clear old sessions (force logout from other devices)
+                // Clear ALL old sessions (from all tabs and browsers)
                 _sessionTrackingService.ClearAllUserSessions(user.UserId);
 
                 // Log this security event
                 _auditService.LogActivityAsync(user.UserId, user.Email,
                     "MultipleLogin", true,
-                    $"User logged in from new device/browser. {existingSessions} previous sessions terminated.",
+                    $"User logged in from new tab/browser. {existingSessions} previous sessions terminated.",
                     HttpContext);
 
-                TempData["InfoMessage"] = $"You were logged out from {existingSessions} other device(s).";
+                TempData["InfoMessage"] = $"You were logged out from {existingSessions} other device(s) or tab(s).";
             }
+
+            // Generate unique session ID (ONLY ONCE!)
+            var sessionId = Guid.NewGuid().ToString();
+
+            // Set all session values FIRST
             HttpContext.Session.SetInt32("UserId", user.UserId);
             HttpContext.Session.SetString("Email", user.Email);
             HttpContext.Session.SetString("FullName", user.FullName);
-            HttpContext.Session.SetString("SessionId", Guid.NewGuid().ToString());
+            HttpContext.Session.SetString("SessionId", sessionId);
+            HttpContext.Session.SetString("TabId", tabId); // Store TabId in session
             HttpContext.Session.SetString("UserRole", "Member");
             HttpContext.Session.SetString("PhotoPath", user.PhotoPath ?? "");
-
-            // Generate unique session ID
-            var sessionId = Guid.NewGuid().ToString();
-            HttpContext.Session.SetString("SessionId", sessionId);
 
             // CRITICAL: Set session activity timestamps
             HttpContext.Session.SetString("SessionCreated", DateTime.UtcNow.ToString("o"));
             HttpContext.Session.SetString("LastActivity", DateTime.UtcNow.ToString("o"));
 
-            // Register this session in the tracking service
+            // IMPORTANT: Register BOTH keys in session tracking for maximum compatibility
+            // 1. Register composite key (SessionId_TabId) for tab-specific tracking
+            var compositeKey = $"{sessionId}_{tabId}";
+            _sessionTrackingService.AddSession(compositeKey, user.UserId);
+
+            // 2. ALSO register plain SessionId for browser-level tracking (backward compatibility)
+            //    This ensures different browsers are still detected
             _sessionTrackingService.AddSession(sessionId, user.UserId);
 
-            // Update last login
+            // Update last login and store composite key in database
             user.LastLoginDate = DateTime.Now;
-
-            // Store session ID in database for multiple login detection
-            user.LastSessionId = HttpContext.Session.GetString("SessionId");
+            user.LastSessionId = compositeKey; // Store the composite key
             _context.SaveChanges();
         }
 
@@ -1233,7 +1287,36 @@ namespace FreshFarmMarket.Controllers
             if (string.IsNullOrEmpty(input))
                 return string.Empty;
 
-            return System.Net.WebUtility.HtmlEncode(input);
+            // Remove any script tags and their content
+            input = Regex.Replace(input, @"<script[^>]*>.*?</script>", string.Empty,
+                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+            // Remove any iframe tags
+            input = Regex.Replace(input, @"<iframe[^>]*>.*?</iframe>", string.Empty,
+                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+            // Remove onclick, onerror, and other event handlers
+            input = Regex.Replace(input, @"on\w+\s*=\s*[""'][^""']*[""']", string.Empty,
+                RegexOptions.IgnoreCase);
+            input = Regex.Replace(input, @"on\w+\s*=\s*[^\s>]*", string.Empty,
+                RegexOptions.IgnoreCase);
+
+            // Remove javascript: protocol
+            input = Regex.Replace(input, @"javascript:", string.Empty,
+                RegexOptions.IgnoreCase);
+
+            // Remove data: protocol (can be used for XSS)
+            input = Regex.Replace(input, @"data:", string.Empty,
+                RegexOptions.IgnoreCase);
+
+            // Remove vbscript: protocol
+            input = Regex.Replace(input, @"vbscript:", string.Empty,
+                RegexOptions.IgnoreCase);
+
+            // HTML encode to convert special characters
+            input = System.Net.WebUtility.HtmlEncode(input);
+
+            return input;
         }
 
     } 

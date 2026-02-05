@@ -31,7 +31,7 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<ISmsService, SmsService>();
 builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IReCaptchaService, ReCaptchaService>();
-builder.Services.AddScoped<ISessionTrackingService, SessionTrackingService>();
+builder.Services.AddSingleton<ISessionTrackingService, SessionTrackingService>();
 builder.Services.AddHttpClient();
 
 // Configure Anti-forgery tokens
