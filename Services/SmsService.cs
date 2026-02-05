@@ -44,11 +44,25 @@ namespace FreshFarmMarket.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in mock SMS service");
-                // Still return true so the flow continues
-                return true;
-            }
+                var sanitizedPhone = SanitizePhoneNumber(phoneNumber);
+                _logger.LogError(ex, "Error sending SMS to {PhoneNumber}", sanitizedPhone);
+                return false;
+            } 
         }
+            private string SanitizePhoneNumber(string phoneNumber)
+        {
+            if (string.IsNullOrEmpty(phoneNumber))
+                return "unknown";
+
+            // Mask middle digits for privacy and remove injection characters
+            var cleaned = phoneNumber.Replace("\r", "").Replace("\n", "").Trim();
+            if (cleaned.Length > 6)
+            {
+                return cleaned.Substring(0, 3) + "****" + cleaned.Substring(cleaned.Length - 3);
+            }
+            return "****";
+        }
+        
 
         public async Task<bool> Send2FACodeAsync(string phoneNumber, string code)
         {

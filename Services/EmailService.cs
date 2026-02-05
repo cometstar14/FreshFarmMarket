@@ -62,7 +62,10 @@ namespace FreshFarmMarket.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error sending email to {Email}", toEmail);
+                // Don't log the email address - use a sanitized version
+                var sanitizedEmail = string.IsNullOrEmpty(toEmail) ? "unknown" :
+                    toEmail.Substring(0, Math.Min(3, toEmail.Length)) + "***@***";
+                _logger.LogError(ex, "Error sending email to recipient");
                 return false;
             }
         }

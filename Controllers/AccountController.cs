@@ -455,6 +455,7 @@ namespace FreshFarmMarket.Controllers
 
         // ========== EMAIL AVAILABILITY CHECK ==========
         [HttpGet]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> IsEmailAvailable(string email)
         {
             if (string.IsNullOrEmpty(email))

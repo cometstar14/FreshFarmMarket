@@ -25,6 +25,10 @@ namespace FreshFarmMarket.Services
         {
             try
             {
+                // Sanitize email and details to prevent log injection
+                var sanitizedEmail = SanitizeLogInput(email);
+                var sanitizedDetails = SanitizeLogInput(details);
+
                 var auditLog = new AuditLog
                 {
                     UserId = userId,
@@ -38,7 +42,7 @@ namespace FreshFarmMarket.Services
                 if (httpContext != null)
                 {
                     auditLog.IpAddress = httpContext.Connection.RemoteIpAddress?.ToString();
-                    auditLog.UserAgent = httpContext.Request.Headers["User-Agent"].ToString();
+                    auditLog.UserAgent = SanitizeLogInput(httpContext.Request.Headers["User-Agent"].ToString());
                 }
 
                 _context.AuditLogs.Add(auditLog);
@@ -48,6 +52,18 @@ namespace FreshFarmMarket.Services
             {
                 _logger.LogError(ex, "Error logging audit activity for user {Email}", email);
             }
+        }
+        private string SanitizeLogInput(string? input)
+        {
+            if (string.IsNullOrEmpty(input))
+                return string.Empty;
+
+            // Remove newlines and carriage returns to prevent log injection
+            return input
+                .Replace("\r", "")
+                .Replace("\n", "")
+                .Replace("\t", " ")
+                .Trim();
         }
 
         public async Task<List<AuditLog>> GetUserAuditLogsAsync(int userId, int count = 10)
