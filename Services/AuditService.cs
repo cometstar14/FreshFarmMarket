@@ -21,7 +21,7 @@ namespace FreshFarmMarket.Services
             _logger = logger;
         }
 
-        public async Task LogActivityAsync(int? userId, string emailOrIdentifier, string action, bool success, , string? details = null, HttpContext? httpContext = null)
+        public async Task LogActivityAsync(int? userId, string emailOrIdentifier, string action, bool success, string? details = null, HttpContext? httpContext = null)
         {
             try
             {
