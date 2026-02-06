@@ -83,10 +83,16 @@
 
     <script src="~/js/tab-detection.js" asp-append-version="true"></script>
 
-    <!-- jQuery and validation scripts (all from CDN) -->
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jquery-validation@1.19.5/dist/jquery.validate.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jquery-validation-unobtrusive@4.0.0/dist/jquery.validate.unobtrusive.min.js"></script>
+    <!-- jQuery and validation scripts (all from CDN with integrity checks) -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"
+            integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo="
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery-validation@1.20.0/dist/jquery.validate.min.js"
+            integrity="sha256-kEbVl90tY6P8WVRjOjmXvYMsd/RldppKKr3QXYkjYMo="
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery-validation-unobtrusive@4.0.0/dist/jquery.validate.unobtrusive.min.js"
+            integrity="sha256-Xw5bCYIe3KqNjfRDtXZnDxD4VpHfqKXr9Bq/0TYxLxU="
+            crossorigin="anonymous"></script>
 
     <!-- Bootstrap -->
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
